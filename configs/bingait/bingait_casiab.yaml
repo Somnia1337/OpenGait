@@ -1,0 +1,130 @@
+data_cfg:
+  dataset_name: CASIA-B
+  dataset_root: ../datasets/CASIA-B-pkl
+  dataset_partition: ./datasets/CASIA-B/CASIA-B.json
+  num_workers: 1
+  remove_no_gallery: false
+  test_dataset_name: CASIA-B
+
+model_cfg:
+  model: BinGait
+  backbone_cfg:
+    type: ResNet9
+    block: BasicBlock
+    channels: [64, 128, 256, 512]
+    layers: [1, 1, 1, 1]
+    strides: [1, 2, 2, 1]
+    maxpool: false
+  SeparateFCs:
+    in_channels: 512
+    out_channels: 256
+    parts_num: 16
+  SeparateBNNecks:
+    class_num: 74
+    in_channels: 256
+    parts_num: 16
+  bin_num: [16]
+  hash_dim: 256 #####
+
+evaluator_cfg:
+  enable_float16: true
+  restore_ckpt_strict: true
+  restore_hint: 76920
+  save_name: BinGait
+  sampler:
+    batch_shuffle: false
+    batch_size: 1
+    sample_type: all_ordered
+    frames_all_limit: 720
+  metric: hamming
+  transform:
+    - type: BaseSilCuttingTransform
+  cross_view_gallery: true
+
+loss_cfg:
+  - type: HashLoss
+    loss_term_weight: 1.0
+    log_prefix: hash
+
+trainer_cfg:
+  enable_float16: true
+  fix_BN: true
+  sync_BN: true
+  restore_ckpt_strict: false
+  optimizer_reset: true
+  restore_hint: 60000
+  save_name: BinGait
+
+  # save_iter: 100
+  # total_iter: 60100
+
+  save_iter: 2000
+  total_iter: 80000
+
+  # save_iter: 10
+  # total_iter: 78000
+
+  # save_iter: 5000
+  # total_iter: 100000
+
+  log_iter: 2000
+  with_test: true
+  # find_unused_parameters: true
+  sampler:
+    type: TripletSampler
+    sample_type: fixed_unordered
+    batch_size: [8, 4]
+    frames_num_fixed: 30
+    frames_num_max: 40
+    frames_num_min: 20
+  transform:
+    - type: Compose
+      trf_cfg:
+        - type: BaseSilCuttingTransform
+        - type: RandomRotate
+          prob: 0.3
+        - type: RandomErasing
+          prob: 0.3
+
+# optimizer_cfg:
+#   lr: 0.1
+#   momentum: 0.9
+#   solver: SGD
+#   weight_decay: 0.0005
+
+# optimizer_cfg:
+#   lr: 0.00001
+#   momentum: 0.9
+#   solver: Adam
+#   weight_decay: 0.00000005
+
+# optimizer_cfg:
+#   lr: 0.00005
+#   momentum: 0.9
+#   solver: Adam
+#   weight_decay: 0.0
+
+optimizer_cfg:
+  lr: 0.0001
+  momentum: 0.9
+  solver: Adam
+  weight_decay: 0.0000005
+
+# optimizer_cfg:
+#   lr: 0.001
+#   momentum: 0.9
+#   solver: Adam
+#   weight_decay: 0.000005
+
+# optimizer_cfg:
+#   lr: 0.0001
+#   solver: RMSprop
+
+scheduler_cfg:
+  gamma: 0.1
+  # milestones: [80000, 100000, 110000]
+  scheduler: MultiStepLR
+
+# 1. 加载预训练好的模型参数到特征提取部分
+# 2. 使用 params.require_grads()=False 来固定特征提取部分参数，也就是这一部分不需要梯度下降优化
+# 3. 接着就可以只用单独训练新增部分。
