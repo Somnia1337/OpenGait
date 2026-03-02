@@ -1,6 +1,7 @@
 import os
 from time import strftime, localtime
 import numpy as np
+import torch
 from utils import get_msg_mgr, mkdir
 
 from .metric import (
@@ -12,6 +13,28 @@ from .metric import (
     evaluate_many,
 )
 from .re_rank import re_ranking
+
+
+def chunked_cuda_dist(probe_x, gallery_x, metric, chunk_size=256):
+    dist_chunks = []
+    for start in range(0, len(probe_x), chunk_size):
+        end = min(start + chunk_size, len(probe_x))
+        probe_chunk = probe_x[start:end]
+        dist_chunk = cuda_dist(probe_chunk, gallery_x, metric)
+        dist_chunks.append(dist_chunk.cpu())
+        torch.cuda.empty_cache()
+    return torch.cat(dist_chunks, dim=0)
+
+
+def chunked_cuda_hamming_dist(probe_x, gallery_x, chunk_size=256):
+    dist_chunks = []
+    for start in range(0, len(probe_x), chunk_size):
+        end = min(start + chunk_size, len(probe_x))
+        probe_chunk = probe_x[start:end]
+        dist_chunk = cuda_hamming_dist(probe_chunk, gallery_x)
+        dist_chunks.append(dist_chunk.cpu())
+        torch.cuda.empty_cache()
+    return torch.cat(dist_chunks, dim=0)
 
 
 def de_diag(acc, each_angle=False):
@@ -51,12 +74,12 @@ def cross_view_gallery_evaluation(
             gallery_y = label[gseq_mask]
             gallery_x = feature[gseq_mask, :]
             dist = (
-                cuda_hamming_dist(probe_x, gallery_x)
+                chunked_cuda_hamming_dist(probe_x, gallery_x)
                 if hamming
-                else cuda_dist(probe_x, gallery_x, metric)
+                else chunked_cuda_dist(probe_x, gallery_x, metric)
             )
             eval_results = compute_ACC_mAP(
-                dist.cpu().numpy(), probe_y, gallery_y, view[pseq_mask], view[gseq_mask]
+                dist.numpy(), probe_y, gallery_y, view[pseq_mask], view[gseq_mask]
             )
             acc[type_][v1] = np.round(eval_results[0] * 100, 2)
             mean_ap[type_][v1] = np.round(eval_results[1] * 100, 2)
@@ -204,12 +227,12 @@ def single_view_gallery_evaluation(
                 )  # For SUSTech1K only
                 gallery_y = label[gseq_mask]
                 gallery_x = feature[gseq_mask, :]
-                dist = dist = (
-                    cuda_hamming_dist(probe_x, gallery_x)
+                dist = (
+                    chunked_cuda_hamming_dist(probe_x, gallery_x)
                     if hamming
-                    else cuda_dist(probe_x, gallery_x, metric)
+                    else chunked_cuda_dist(probe_x, gallery_x, metric)
                 )
-                idx = dist.topk(num_rank, largest=False)[1].cpu().numpy()
+                idx = dist.topk(num_rank, largest=False)[1].numpy()
                 acc[type_][v1, v2, :] = np.round(
                     np.sum(
                         np.cumsum(
@@ -293,8 +316,8 @@ def evaluate_real_scene(data, dataset, metric="euc"):
     probe_x = feature[pseq_mask, :]
     probe_y = label[pseq_mask]
 
-    dist = cuda_dist(probe_x, gallery_x, metric)
-    idx = dist.topk(num_rank, largest=False)[1].cpu().numpy()
+    dist = chunked_cuda_dist(probe_x, gallery_x, metric)
+    idx = dist.topk(num_rank, largest=False)[1].numpy()
     acc = np.round(
         np.sum(
             np.cumsum(np.reshape(probe_y, [-1, 1]) == gallery_y[idx[:, 0:num_rank]], 1)
@@ -339,8 +362,8 @@ def GREW_submission(data, dataset, metric="euc"):
     probe_y = view[pseq_mask]
 
     num_rank = 20
-    dist = cuda_dist(probe_x, gallery_x, metric)
-    idx = dist.topk(num_rank, largest=False)[1].cpu().numpy()
+    dist = chunked_cuda_dist(probe_x, gallery_x, metric)
+    idx = dist.topk(num_rank, largest=False)[1].numpy()
 
     save_path = os.path.join(
         "GREW_result/" + strftime("%Y-%m%d-%H%M%S", localtime()) + ".csv"
@@ -372,13 +395,13 @@ def HID_submission(data, dataset, rerank=True, metric="euc"):
     probe_y = seq_type[probe_mask]
     if rerank:
         feat = np.concatenate([probe_x, gallery_x])
-        dist = cuda_dist(feat, feat, metric).cpu().numpy()
+        dist = chunked_cuda_dist(feat, feat, metric).numpy()
         msg_mgr.log_info("Starting Re-ranking")
         re_rank = re_ranking(dist, probe_x.shape[0], k1=6, k2=6, lambda_value=0.3)
         idx = np.argsort(re_rank, axis=1)
     else:
-        dist = cuda_dist(probe_x, gallery_x, metric)
-        idx = dist.cpu().sort(1)[1].numpy()
+        dist = chunked_cuda_dist(probe_x, gallery_x, metric)
+        idx = dist.sort(1)[1].numpy()
 
     save_path = os.path.join(
         "HID_result/" + strftime("%Y-%m%d-%H%M%S", localtime()) + ".csv"
@@ -431,7 +454,7 @@ def evaluate_Gait3D(data, dataset, metric="euc"):
 
     results = {}
     msg_mgr.log_info(f"The test metric you choose is {metric}.")
-    dist = cuda_dist(probe_features, gallery_features, metric).cpu().numpy()
+    dist = chunked_cuda_dist(probe_features, gallery_features, metric).numpy()
     cmc, all_AP, all_INP = evaluate_rank(dist, probe_lbls, gallery_lbls)
 
     mAP = np.mean(all_AP)
@@ -504,7 +527,7 @@ def evaluate_CCPG(data, dataset, metric="euc"):
                 probe_seq,
             )
         )
-        distmat = cuda_dist(probe_x, gallery_x, metric).cpu().numpy()
+        distmat = chunked_cuda_dist(probe_x, gallery_x, metric).numpy()
         # cmc, ap = evaluate(distmat, probe_y, gallery_y, probe_view, gallery_view)
         cmc, ap, inp = evaluate_many(
             distmat, probe_y, gallery_y, probe_view, gallery_view
@@ -554,8 +577,8 @@ def evaluate_CCPG(data, dataset, metric="euc"):
                 probe_x = feature[pseq_mask, :]
                 probe_y = label[pseq_mask]
 
-                dist = cuda_dist(probe_x, gallery_x, metric)
-                idx = dist.sort(1)[1].cpu().numpy()
+                dist = chunked_cuda_dist(probe_x, gallery_x, metric)
+                idx = dist.sort(1)[1].numpy()
                 # print(p, v1, v2, "\n")
                 acc[p, v1, v2, :] = np.round(
                     np.sum(
@@ -693,7 +716,7 @@ def evaluate_FreeGait(data, dataset, metric="euc"):
 
     results = {}
     msg_mgr.log_info(f"The test metric you choose is {metric}.")
-    dist = cuda_dist(probe_features, gallery_features, metric).cpu().numpy()
+    dist = chunked_cuda_dist(probe_features, gallery_features, metric).numpy()
     cmc, all_AP, all_INP = evaluate_rank(dist, probe_lbls, gallery_lbls)
 
     mAP = np.mean(all_AP)

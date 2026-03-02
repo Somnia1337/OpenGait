@@ -46,6 +46,7 @@ class BinGait(BaseModel):
                     nn.init.normal_(m.weight.data, 1.0, 0.02)
                     nn.init.constant_(m.bias.data, 0.0)
 
+        self._accum_counter = 0
         self.Backbone.eval()
         self.Backbone.requires_grad_(False)
 

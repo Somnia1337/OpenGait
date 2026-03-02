@@ -1,6 +1,6 @@
 data_cfg:
   dataset_name: CASIA-B
-  dataset_root: ./datasets/CASIA-B-pkl
+  dataset_root: ../datasets/CASIA-B-pkl
   dataset_partition: ./datasets/CASIA-B/CASIA-B.json
   num_workers: 1
   remove_no_gallery: false # Remove probe if no gallery for it
@@ -19,6 +19,7 @@ evaluator_cfg:
   metric: euc # cos
   transform:
     - type: BaseSilCuttingTransform
+  cross_view_gallery: true
 
 loss_cfg:
   - loss_term_weight: 1.0
@@ -76,17 +77,18 @@ scheduler_cfg:
     - 40000
     - 50000
   scheduler: MultiStepLR
+
 trainer_cfg:
   enable_float16: true # half_percesion float for memory reduction and speedup
   fix_BN: false
-  with_test: false
+  with_test: true
   log_iter: 100
   restore_ckpt_strict: true
   restore_hint: 0
-  save_iter: 60000
+  save_iter: 1000
   save_name: GaitBase_DA
   sync_BN: true
-  total_iter: 60000
+  total_iter: 1000
   sampler:
     batch_shuffle: true
     batch_size:

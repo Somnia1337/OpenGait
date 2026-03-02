@@ -1,14 +1,17 @@
-base-c phase:
-  CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.run --nproc_per_node=1 opengait/main.py --cfgs ./configs/gaitbase/gaitbase_da_casiab.yaml --phase {{phase}}
+run := 'CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.run --nproc_per_node=1 opengait/main.py'
+null := '/dev/null'
 
-base-o phase:
-  CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.run --nproc_per_node=1 opengait/main.py --cfgs ./configs/gaitbase/gaitbase_oumvlp.yaml --phase {{phase}}
+base-c phase log=null:
+    {{run}} --cfgs ./configs/gaitbase/gaitbase_da_casiab.yaml --phase {{phase}} 2>&1 | tee {{log}}
 
-set-c phase:
-  CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.run --nproc_per_node=1 opengait/main.py --cfgs ./configs/gaitset/gaitset.yaml --phase {{phase}}
+base-o phase log=null:
+    {{run}} --cfgs ./configs/gaitbase/gaitbase_oumvlp.yaml --phase {{phase}} 2>&1 | tee {{log}}
 
-bin-c phase:
-  CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.run --nproc_per_node=1 opengait/main.py --cfgs ./configs/bingait/bingait_casiab.yaml --phase {{phase}}
+set-c phase log=null:
+    {{run}} --cfgs ./configs/gaitset/gaitset.yaml --phase {{phase}} 2>&1 | tee {{log}}
 
-bin-o phase:
-  CUDA_VISIBLE_DEVICES=0 python -m torch.distributed.run --nproc_per_node=1 opengait/main.py --cfgs ./configs/bingait/bingait_oumvlp.yaml --phase {{phase}}
+bin-c phase log=null:
+    {{run}} --cfgs ./configs/bingait/bingait_casiab.yaml --phase {{phase}} 2>&1 | tee {{log}}
+
+bin-o phase log=null:
+    {{run}} --cfgs ./configs/bingait/bingait_oumvlp.yaml --phase {{phase}} 2>&1 | tee {{log}}
