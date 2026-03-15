@@ -29,7 +29,7 @@ model_cfg:
 evaluator_cfg:
   enable_float16: true
   restore_ckpt_strict: true
-  restore_hint: 60000
+  restore_hint: 62700
   save_name: BinGait
   sampler:
     batch_shuffle: false
@@ -52,24 +52,15 @@ trainer_cfg:
   sync_BN: true
   restore_ckpt_strict: false
   optimizer_reset: true
-  restore_hint: 60000
   save_name: BinGait
 
-  log_iter: 1000
-  save_iter: 1000
-  total_iter: 68000
+  restore_hint: 60000
+  log_iter: 100
+  save_iter: 100
+  total_iter: 60800
 
-  # save_iter: 2000
-  # total_iter: 80000
-
-  # save_iter: 10
-  # total_iter: 78000
-
-  # save_iter: 5000
-  # total_iter: 100000
-
-  with_test: true
-  grad_accum_steps: 2
+  with_test: false
+  grad_accum_steps: 4
   sampler:
     type: TripletSampler
     sample_type: fixed_unordered
@@ -82,52 +73,17 @@ trainer_cfg:
       trf_cfg:
         - type: BaseSilCuttingTransform
         - type: RandomRotate
-          prob: 0.3
+          prob: 0.4
         - type: RandomErasing
-          prob: 0.3
-
-# optimizer_cfg:
-#   lr: 0.1
-#   momentum: 0.9
-#   solver: SGD
-#   weight_decay: 0.0005
-
-# optimizer_cfg:
-#   lr: 0.001
-#   momentum: 0.9
-#   solver: Adam
-#   weight_decay: 0.0000005
-
-# optimizer_cfg:
-#   lr: 0.0004
-#   momentum: 0.9
-#   solver: Adam
-#   weight_decay: 0.0000005
+          prob: 0.4
 
 optimizer_cfg:
-  lr: 0.0001
+  lr: 0.0002
+  # lr: 0.0001
+  # lr: 0.00004
+  # lr: 0.00002
+  # lr: 0.00001
   momentum: 0.9
   solver: Adam
   weight_decay: 0.0000005
-
-# optimizer_cfg:
-#   lr: 0.00005
-#   momentum: 0.9
-#   solver: Adam
-#   weight_decay: 0.0
-
-# optimizer_cfg:
-#   lr: 0.00001
-#   momentum: 0.9
-#   solver: Adam
-#   weight_decay: 0.0000005
-
-# scheduler_cfg:
-#   gamma: 0.8
-#   milestones: [60400, 60800, 61200, 61600, 62000]
-#   scheduler: MultiStepLR
-
-# scheduler_cfg:
-#   T_max: 3200
-#   eta_min: 0.00001
-#   scheduler: CosineAnnealingLR
+  # weight_decay: 0.0
