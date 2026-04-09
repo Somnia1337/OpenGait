@@ -53,12 +53,6 @@ trainer_cfg:
   restore_ckpt_strict: false
   optimizer_reset: true
   save_name: BinGait
-
-  restore_hint: 60000
-  log_iter: 100
-  save_iter: 100
-  total_iter: 60800
-
   with_test: false
   grad_accum_steps: 4
   sampler:
@@ -76,6 +70,31 @@ trainer_cfg:
           prob: 0.4
         - type: RandomErasing
           prob: 0.4
+
+  restore_hint: 60000
+  log_iter: 100
+  save_iter: 100
+  total_iter: 61200
+
+  # restore_hint: 60800
+  # log_iter: 100
+  # save_iter: 100
+  # total_iter: 61800
+
+  # restore_hint: 61800
+  # log_iter: 100
+  # save_iter: 100
+  # total_iter: 62200
+
+  # restore_hint: 62200
+  # log_iter: 100
+  # save_iter: 100
+  # total_iter: 62600
+
+  # restore_hint: 62600
+  # log_iter: 100
+  # save_iter: 100
+  # total_iter: 63000
 
 optimizer_cfg:
   lr: 0.0002

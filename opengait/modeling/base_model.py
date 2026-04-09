@@ -445,7 +445,7 @@ class BaseModel(MetaModel, nn.Module):
             ]
 
             model.msg_mgr.train_step(loss_info, visual_summary)
-            if model.iteration % model.engine_cfg["save_iter"] == 0:
+            if (model.iteration - model.engine_cfg["restore_hint"]) % model.engine_cfg["save_iter"] == 0:
                 # save the checkpoint
                 model.save_ckpt(model.iteration)
 

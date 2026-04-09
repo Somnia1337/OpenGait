@@ -85,7 +85,7 @@ class BinGait(BaseModel):
         hash_code = (hash_code + 1) / 2
 
         retval = {
-            "training_feat": {"hash": {"logits": z, "labels": labs}},
+            "training_feat": {"hash": {"z": z, "labels": labs}},
             "visual_summary": {
                 "image/sils": rearrange(sils, "n c s h w -> (n s) c h w")
             },
