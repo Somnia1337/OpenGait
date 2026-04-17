@@ -6,42 +6,52 @@ from utils import is_tensor
 
 
 def cuda_hamming_dist(x, y):
-    x = torch.from_numpy(x.astype(bool)).cuda()  # (N_x, D)
-    y = torch.from_numpy(y.astype(bool)).cuda()  # (N_y, D)
+    x = torch.from_numpy(x).cuda().float()  # (N_x, D)
+    y = torch.from_numpy(y).cuda().float()  # (N_y, D)
 
-    x_exp = x.unsqueeze(1)  # (N_x, 1, D)
-    y_exp = y.unsqueeze(0)  # (1, N_y, D)
+    x_sum = x.sum(dim=1, keepdim=True)
+    y_sum = y.sum(dim=1, keepdim=True)
 
-    diff = x_exp ^ y_exp  # (N_x, N_y, D) bool
+    dot = torch.matmul(x, y.T)
 
-    hamming = diff.sum(dim=2).float()  # (N_x, N_y)
-
-    return hamming
+    return x_sum + y_sum.T - 2 * dot
 
 
-def cuda_dist(x, y, metric="euc"):
-    x = torch.from_numpy(x).cuda()
-    y = torch.from_numpy(y).cuda()
-    if metric == "cos":
-        x = F.normalize(x, p=2, dim=1)  # n c p
-        y = F.normalize(y, p=2, dim=1)  # n c p
-    num_bin = x.size(2)
-    n_x = x.size(0)
-    n_y = y.size(0)
-    dist = torch.zeros(n_x, n_y).cuda()
-    for i in range(num_bin):
-        _x = x[:, :, i]
-        _y = y[:, :, i]
-        if metric == "cos":
-            dist += torch.matmul(_x, _y.transpose(0, 1))
-        else:
-            _dist = (
-                torch.sum(_x**2, 1).unsqueeze(1)
-                + torch.sum(_y**2, 1).unsqueeze(0)
-                - 2 * torch.matmul(_x, _y.transpose(0, 1))
-            )
-            dist += torch.sqrt(F.relu(_dist))
-    return 1 - dist / num_bin if metric == "cos" else dist / num_bin
+# def cuda_dist(x, y, metric="euc"):
+#     x = torch.from_numpy(x).cuda()
+#     y = torch.from_numpy(y).cuda()
+#     if metric == "cos":
+#         x = F.normalize(x, p=2, dim=1)  # n c p
+#         y = F.normalize(y, p=2, dim=1)  # n c p
+#     num_bin = x.size(2)
+#     n_x = x.size(0)
+#     n_y = y.size(0)
+#     dist = torch.zeros(n_x, n_y).cuda()
+#     for i in range(num_bin):
+#         _x = x[:, :, i]
+#         _y = y[:, :, i]
+#         if metric == "cos":
+#             dist += torch.matmul(_x, _y.transpose(0, 1))
+#         else:
+#             _dist = (
+#                 torch.sum(_x**2, 1).unsqueeze(1)
+#                 + torch.sum(_y**2, 1).unsqueeze(0)
+#                 - 2 * torch.matmul(_x, _y.transpose(0, 1))
+#             )
+#             dist += torch.sqrt(F.relu(_dist))
+#     return 1 - dist / num_bin if metric == "cos" else dist / num_bin
+
+
+def cuda_dist(x, y, _metric):
+    x = torch.from_numpy(x).float().cuda()
+    y = torch.from_numpy(y).float().cuda()
+
+    dot = torch.matmul(x, y.T)
+    nx = torch.norm(x, p=2, dim=1, keepdim=True)
+    ny = torch.norm(y, p=2, dim=1, keepdim=True)
+
+    eps = 1e-8
+    return 1.0 - dot / (torch.matmul(nx, ny.T) + eps)
 
 
 def mean_iou(msk1, msk2, eps=1.0e-9):

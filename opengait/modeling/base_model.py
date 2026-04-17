@@ -23,13 +23,14 @@ from torch.cuda.amp import GradScaler
 from abc import ABCMeta
 from abc import abstractmethod
 
+import os
+
 from . import backbones
 from .loss_aggregator import LossAggregator
 from data.transform import get_transform
 from data.collate_fn import CollateFn
 from data.dataset import DataSet
 import data.sampler as Samplers
-from utils import Odict, mkdir, ddp_all_gather
 from utils import (
     get_valid_args,
     is_list,
@@ -38,6 +39,9 @@ from utils import (
     ts2np,
     list2var,
     get_attr_from,
+    Odict,
+    mkdir,
+    ddp_all_gather,
 )
 from evaluation import evaluator as eval_functions
 from utils import NoOp
@@ -420,6 +424,47 @@ class BaseModel(MetaModel, nn.Module):
             info_dict[k] = v
         return info_dict
 
+    def binary_inference(self, _rank):
+        loader = self.test_loader
+        dataset = loader.dataset
+        total_size = len(dataset)
+        template_root = "binary_templates"
+        hash_dim = 512
+
+        label_list = dataset.label_list
+        types_list = dataset.types_list
+        views_list = dataset.views_list
+
+        all_features = np.zeros((total_size, hash_dim), dtype=np.float32)
+
+        for i in range(total_size):
+            pid = label_list[i]
+            s_type = types_list[i]
+            view = views_list[i]
+
+            if s_type == "nm-01":
+                sub_dir = "gallery"
+            elif s_type in ["cl-01", "bg-01"]:
+                sub_dir = "probe"
+            else:
+                continue
+
+            file_path = os.path.join(
+                template_root, sub_dir, str(pid), f"{s_type}_{view}.bin"
+            )
+
+            if os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    buffer = f.read()
+                unpacked = np.unpackbits(np.frombuffer(buffer, dtype=np.uint8))
+                all_features[i, :] = unpacked[:hash_dim].astype(np.float32)
+            else:
+                self.msg_mgr.log_warning(f"Template not found: {file_path}")
+
+        info_dict = Odict()
+        info_dict["embeddings"] = all_features
+        return info_dict
+
     @staticmethod
     def run_train(model):
         """Accept the instance object(model) here, and then run the train loop."""
@@ -476,7 +521,12 @@ class BaseModel(MetaModel, nn.Module):
             )
         rank = torch.distributed.get_rank()
         with torch.no_grad():
-            info_dict = model.inference(rank)
+            info_dict = (
+                model.binary_inference(rank)
+                if "binary" in evaluator_cfg.keys()
+                else model.inference(rank)
+            )
+
         if rank == 0:
             loader = model.test_loader
             label_list = loader.dataset.label_list

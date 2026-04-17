@@ -146,5 +146,5 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# handproject
-handproj
+# binary gait template
+binary_templates

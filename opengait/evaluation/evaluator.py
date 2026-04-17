@@ -3,6 +3,7 @@ from time import strftime, localtime
 import numpy as np
 import torch
 from utils import get_msg_mgr, mkdir
+from glob import glob
 
 from .metric import (
     mean_iou,
@@ -46,9 +47,7 @@ def de_diag(acc, each_angle=False):
     return result
 
 
-def cross_view_gallery_evaluation(
-    feature, label, seq_type, view, dataset, metric, hamming=False
-):
+def cross_view_gallery_evaluation(feature, label, seq_type, view, dataset, metric):
     """More details can be found: More details can be found in
     [A Comprehensive Study on the Evaluation of Silhouette-based Gait Recognition](https://ieeexplore.ieee.org/document/9928336).
     """
@@ -75,7 +74,7 @@ def cross_view_gallery_evaluation(
             gallery_x = feature[gseq_mask, :]
             dist = (
                 chunked_cuda_hamming_dist(probe_x, gallery_x)
-                if hamming
+                if metric == "hamming"
                 else chunked_cuda_dist(probe_x, gallery_x, metric)
             )
             eval_results = compute_ACC_mAP(
@@ -107,16 +106,14 @@ def cross_view_gallery_evaluation(
 # Modified From https://github.com/AbnerHqC/GaitSet/blob/master/model/utils/evaluator.py
 
 
-def single_view_gallery_evaluation(
-    feature, label, seq_type, view, dataset, metric, hamming=False
-):
+def single_view_gallery_evaluation(feature, label, seq_type, view, dataset, metric):
     probe_seq_dict = {
         "CASIA-B": {
-            "NM": ["nm-05", "nm-06"],
-            "BG": ["bg-01", "bg-02"],
-            "CL": ["cl-01", "cl-02"],
+            "BG": ["bg-01"],
+            "CL": ["cl-01"],
         },
         "OUMVLP": {"NM": ["00"]},
+        "BRL": {"BG": ["bg-01"], "CL": ["cl-01"]},
         "CASIA-E": {
             "NM": [
                 "H-scene2-nm-1",
@@ -174,8 +171,9 @@ def single_view_gallery_evaluation(
         },
     }
     gallery_seq_dict = {
-        "CASIA-B": ["nm-01", "nm-02", "nm-03", "nm-04"],
+        "CASIA-B": ["nm-01"],
         "OUMVLP": ["01"],
+        "BRL": ["nm-01"],
         "CASIA-E": ["H-scene1-nm-1", "H-scene1-nm-2", "L-scene1-nm-1", "L-scene1-nm-2"],
         "SUSTech1K": ["00-nm"],
     }
@@ -229,7 +227,7 @@ def single_view_gallery_evaluation(
                 gallery_x = feature[gseq_mask, :]
                 dist = (
                     chunked_cuda_hamming_dist(probe_x, gallery_x)
-                    if hamming
+                    if metric == "hamming"
                     else chunked_cuda_dist(probe_x, gallery_x, metric)
                 )
                 idx = dist.topk(num_rank, largest=False)[1].numpy()
@@ -275,15 +273,42 @@ def evaluate_indoor_dataset(data, dataset, metric="euc", cross_view_gallery=Fals
     label = np.array(label)
     view = np.array(view)
 
-    if dataset not in ("CASIA-B", "OUMVLP", "CASIA-E", "SUSTech1K"):
-        raise KeyError("DataSet %s hasn't been supported !" % dataset)
+    save_root = "binary_templates"
+    unique_labels = np.unique(label)
+
+    for pid in unique_labels:
+        idx = np.where(label == pid)[0]
+
+        for i in idx:
+            s_type = seq_type[i]
+            v_angle = view[i]
+            feat = feature[i]
+
+            is_gallery = s_type in ["nm-01"]
+            is_probe = s_type in ["bg-01", "cl-01"]
+
+            if is_gallery or is_probe:
+                sub_type = "gallery" if is_gallery else "probe"
+                pid_dir = os.path.join(save_root, sub_type, str(pid))
+
+                os.makedirs(pid_dir, exist_ok=True)
+
+                file_name = f"{s_type}_{v_angle}.bin"
+                save_path = os.path.join(pid_dir, file_name)
+
+                packed_feat = np.packbits(feat.astype(bool))
+                with open(save_path, "wb") as f:
+                    f.write(packed_feat.tobytes())
+
+    print("binary templates saved")
+
     if cross_view_gallery:
         return cross_view_gallery_evaluation(
-            feature, label, seq_type, view, dataset, metric, hamming=metric == "hamming"
+            feature, label, seq_type, view, dataset, metric
         )
     else:
         return single_view_gallery_evaluation(
-            feature, label, seq_type, view, dataset, metric, hamming=metric == "hamming"
+            feature, label, seq_type, view, dataset, metric
         )
 
 
@@ -340,6 +365,67 @@ def evaluate_real_scene(data, dataset, metric="euc"):
         "scalar/test_accuracy/Rank-1": np.mean(acc[0]),
         "scalar/test_accuracy/Rank-5": np.mean(acc[4]),
     }
+
+
+def binary_eval(_data, dataset, cross_view_gallery=False):
+    save_root = "binary_templates"
+    hash_dim = 512
+
+    def load_and_restore_templates(sub_dir):
+        feat_list, lbl_list, type_list, view_list = [], [], [], []
+
+        search_path = os.path.join(save_root, sub_dir, "*", "*.bin")
+        files = glob(search_path)
+
+        if not files:
+            print(f"Warning: No templates found in {sub_dir}")
+            return None
+
+        for f_path in files:
+            parts = f_path.replace("\\", "/").split("/")
+            pid = parts[-2]
+            file_name = parts[-1].replace(".bin", "")
+            s_type, v_angle = file_name.rsplit("_", 1)
+
+            with open(f_path, "rb") as f:
+                packed = np.frombuffer(f.read(), dtype=np.uint8)
+
+            unpacked = np.unpackbits(packed)[:hash_dim].astype(np.float32)
+
+            feat_list.append(unpacked)
+            lbl_list.append(pid)
+            type_list.append(s_type)
+            view_list.append(v_angle)
+
+        return (
+            np.array(feat_list),
+            np.array(lbl_list),
+            np.array(type_list),
+            np.array(view_list),
+        )
+
+    gallery_data = load_and_restore_templates("gallery")
+    probe_data = load_and_restore_templates("probe")
+
+    if gallery_data is None or probe_data is None:
+        raise FileNotFoundError(
+            "Could not load templates from binary_templates directory."
+        )
+
+    all_features = np.concatenate([gallery_data[0], probe_data[0]], axis=0)
+    all_labels = np.concatenate([gallery_data[1], probe_data[1]], axis=0)
+    all_types = np.concatenate([gallery_data[2], probe_data[2]], axis=0)
+    all_views = np.concatenate([gallery_data[3], probe_data[3]], axis=0)
+
+    metric = "hamming"
+    if cross_view_gallery:
+        return cross_view_gallery_evaluation(
+            all_features, all_labels, all_types, all_views, dataset, metric
+        )
+    else:
+        return single_view_gallery_evaluation(
+            all_features, all_labels, all_types, all_views, dataset, metric
+        )
 
 
 def GREW_submission(data, dataset, metric="euc"):

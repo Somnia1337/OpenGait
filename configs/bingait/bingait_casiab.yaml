@@ -1,7 +1,7 @@
 data_cfg:
   dataset_name: CASIA-B
   dataset_root: ../datasets/CASIA-B-pkl
-  dataset_partition: ./datasets/CASIA-B/CASIA-B.json
+  dataset_partition: ./datasets/CASIA-B/CASIA-B-20.json
   num_workers: 1
   remove_no_gallery: false
   test_dataset_name: CASIA-B
@@ -40,6 +40,8 @@ evaluator_cfg:
   transform:
     - type: BaseSilCuttingTransform
   cross_view_gallery: false
+  eval_func: binary_eval # binary_eval 从 binary_templates 加载数据 # default counterpart 为 evaluate_indoor_dataset
+  binary: true # binary_inference # default counterpart 为 inference
 
 loss_cfg:
   - type: HashLoss
