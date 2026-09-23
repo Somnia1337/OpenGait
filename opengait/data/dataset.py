@@ -3,8 +3,10 @@ import pickle
 import os.path as osp
 import torch.utils.data as tordata
 import json
-from utils import get_msg_mgr
+from utils import get_msg_mgr, is_bool_list, is_int_list
 
+import torch
+from pathlib import Path
 
 class DataSet(tordata.Dataset):
     def __init__(self, data_cfg, training):
@@ -12,8 +14,15 @@ class DataSet(tordata.Dataset):
             seqs_info: the list with each element indicating 
                             a certain gait sequence presented as [label, type, view, paths];
         """
+        self.dataset_name = data_cfg['dataset_name']
         self.__dataset_parser(data_cfg, training)
-        self.cache = data_cfg['cache']
+        self.cache = data_cfg['cache'] if 'cache' in data_cfg.keys() else False
+        if 'd-gait' in self.dataset_name.lower():
+            self.seqs_info = [[seq[0], f"{seq[0]}-{seq[1]}", *seq[2:]] for seq in self.seqs_info]
+        if training:
+            if 'self_supervised' in data_cfg.keys() and data_cfg['self_supervised']:
+                self.seqs_info = [[f"{seq[0]}-{seq[1]}-{seq[2]}", *seq[1:]] for seq in self.seqs_info]
+            self.seqs_info = [[f"{self.dataset_name}-{seq[0]}", *seq[1:]] for seq in self.seqs_info]
         self.label_list = [seq_info[0] for seq_info in self.seqs_info]
         self.types_list = [seq_info[1] for seq_info in self.seqs_info]
         self.views_list = [seq_info[2] for seq_info in self.seqs_info]
@@ -32,7 +41,9 @@ class DataSet(tordata.Dataset):
         return len(self.seqs_info)
 
     def __loader__(self, paths):
-        paths = sorted(paths)
+        if not is_int_list(self.data_in_use):
+            # When specified as a list of int, arbitrary order can be specified by the user
+            paths = sorted(paths)
         data_list = []
         for pth in paths:
             if pth.endswith('.pkl'):
@@ -69,9 +80,9 @@ class DataSet(tordata.Dataset):
     def __dataset_parser(self, data_config, training):
         dataset_root = data_config['dataset_root']
         try:
-            data_in_use = data_config['data_in_use']  # [n], true or false
+            self.data_in_use = data_config['data_in_use']  # [n], true or false or [m], index of data to use
         except:
-            data_in_use = None
+            self.data_in_use = None
 
         with open(data_config['dataset_partition'], "rb") as f:
             partition = json.load(f)
@@ -86,8 +97,8 @@ class DataSet(tordata.Dataset):
 
         def log_pid_list(pid_list):
             if len(pid_list) >= 3:
-                msg_mgr.log_info('[%s, %s, ..., %s]' %
-                                 (pid_list[0], pid_list[1], pid_list[-1]))
+                msg_mgr.log_info('[%s, %s, ..., %s], Len: %s' %
+                                 (pid_list[0], pid_list[1], pid_list[-1], len(pid_list)))
             else:
                 msg_mgr.log_info(pid_list)
 
@@ -112,9 +123,12 @@ class DataSet(tordata.Dataset):
                         if seq_dirs != []:
                             seq_dirs = [osp.join(seq_path, dir)
                                         for dir in seq_dirs]
-                            if data_in_use is not None:
-                                seq_dirs = [dir for dir, use_bl in zip(
-                                    seq_dirs, data_in_use) if use_bl]
+                            if self.data_in_use is not None:
+                                if is_bool_list(self.data_in_use): # self.data_in_use is a bool mask list
+                                    seq_dirs = [dir for dir, use_bl in zip(
+                                        seq_dirs, self.data_in_use) if use_bl]
+                                else:   # self.data_in_use is a list of index
+                                    seq_dirs = [seq_dirs[idx] for idx in self.data_in_use if idx < len(seq_dirs)]
                             seqs_info_list.append([*seq_info, seq_dirs])
                         else:
                             msg_mgr.log_debug(
